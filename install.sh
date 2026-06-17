@@ -8,11 +8,7 @@ CMD_PATH="$INSTALL_DIR/ponto"
 
 # Cria o comando 'ponto' sempre (garante que exista mesmo em re-execuções)
 mkdir -p "$INSTALL_DIR"
-cat > "$CMD_PATH" << 'CMD'
-#!/usr/bin/env bash
-nohup "$HOME/.local/bin/ponto-guardian.AppImage" --no-sandbox > /dev/null 2>&1 &
-disown
-CMD
+printf '#!/usr/bin/env bash\nnohup "$HOME/.local/bin/ponto-guardian.AppImage" --no-sandbox > /dev/null 2>&1 &\ndisown\n' > "$CMD_PATH"
 chmod +x "$CMD_PATH"
 
 # Garante que ~/.local/bin está no PATH
