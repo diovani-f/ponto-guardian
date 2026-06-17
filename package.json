@@ -1,0 +1,68 @@
+{
+  "name": "ponto-guardian",
+  "version": "0.1.0",
+  "description": "Monitor de jornada de trabalho integrado ao Secullum",
+  "private": true,
+  "main": "dist-electron/electron/main.js",
+  "author": {
+    "name": "Diovani",
+    "email": "diovani@ponto-guardian.local"
+  },
+  "homepage": "https://github.com/diovani/ponto-guardian",
+  "scripts": {
+    "poc": "tsx poc/index.ts",
+    "start": "tsx src/main.ts",
+    "build:electron": "node scripts/build-electron.mjs",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
+    "electron": "npm run build:electron && npx electron dist-electron/electron/main.js --no-sandbox",
+    "start:bg": "npm run build:electron && nohup npx electron dist-electron/electron/main.js --no-sandbox > /dev/null 2>&1 &",
+    "dist": "npm run build:electron && electron-builder --linux AppImage",
+    "open": "nohup \"./release/Ponto Guardian-0.1.0.AppImage\" --no-sandbox > /dev/null 2>&1 & disown",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 2>/dev/null || true"
+  },
+  "build": {
+    "appId": "com.ponto-guardian.app",
+    "productName": "Ponto Guardian",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "!dist-electron/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "config/settings.example.json",
+        "to": "config/settings.example.json"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility",
+      "executableName": "ponto-guardian"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ]
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.14.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.0",
+    "playwright": "^1.60.0",
+    "tsx": "^4.15.0",
+    "typescript": "^5.4.5"
+  }
+}

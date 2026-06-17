@@ -1,0 +1,13 @@
+{
+  "empresaId": 18914,
+  "login": "SEU_NUMERO_DE_FOLHA",
+  "senha": "SUA_SENHA",
+  "dailyHours": 6,
+  "warningMinutes": 10,
+  "syncIntervalMinutes": 2,
+  "allowOvertime": false,
+  "entryTime": "08:00",
+  "lunchTime": "12:00",
+  "alwaysOnTop": true,
+  "autostart": false
+}

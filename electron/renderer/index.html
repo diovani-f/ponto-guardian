@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ponto Guardian</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: transparent;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .widget {
+      width: 260px;
+      background: rgba(18, 18, 24, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 14px 16px 12px;
+      color: #fff;
+      backdrop-filter: blur(12px);
+      -webkit-app-region: drag;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .close-btn {
+      -webkit-app-region: no-drag;
+      cursor: pointer;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.3);
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .close-btn:hover {
+      color: rgba(255, 255, 255, 0.8);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .pin-btn {
+      -webkit-app-region: no-drag;
+      cursor: pointer;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.2);
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .pin-btn.active {
+      color: #818cf8;
+    }
+
+    .pin-btn:hover {
+      color: rgba(255, 255, 255, 0.8);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+
+    .label {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.45);
+    }
+
+    .value {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .value.accent {
+      color: #4ade80;
+    }
+
+    .value.warning {
+      color: #facc15;
+    }
+
+    .value.danger {
+      color: #f87171;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.07);
+      margin: 8px 0;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .last-punch {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.3);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 160px;
+    }
+
+    .sync-time {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.2);
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    .dot-open    { background: #4ade80; }
+    .dot-closed  { background: #facc15; }
+    .dot-done    { background: #818cf8; }
+    .dot-overtime { background: #f87171; animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    .widget.flash {
+      animation: flash-border 0.4s ease-in-out 4;
+    }
+
+    @keyframes flash-border {
+      0%, 100% { border-color: rgba(255, 255, 255, 0.08); box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+      50%       { border-color: #818cf8; box-shadow: 0 0 18px rgba(129, 140, 248, 0.7); }
+    }
+
+    .flash-msg {
+      font-size: 10px;
+      color: #818cf8;
+      text-align: center;
+      margin-top: 6px;
+      min-height: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-text {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.35);
+    }
+
+    .punches-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .punch-badge {
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      padding: 1px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .punch-badge.entry {
+      background: rgba(74, 222, 128, 0.12);
+      color: #4ade80;
+    }
+
+    .punch-badge.exit {
+      background: rgba(248, 113, 113, 0.12);
+      color: #f87171;
+    }
+
+    .punches-empty {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="widget">
+    <div class="header">
+      <span class="title">Ponto Guardian</span>
+      <div style="display:flex;gap:4px;-webkit-app-region:no-drag">
+        <span class="pin-btn" id="pinBtn" title="Sempre no topo">📌</span>
+        <span class="close-btn" id="settingsBtn" title="Configurações">⚙</span>
+        <span class="close-btn" id="closeBtn" title="Ocultar">×</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="label">Trabalhado</span>
+      <span class="value accent" id="worked">--</span>
+    </div>
+
+    <div class="row">
+      <span class="label">Restante</span>
+      <span class="value" id="remaining">--</span>
+    </div>
+
+    <div class="row">
+      <span class="label">Saída prevista</span>
+      <span class="value" id="exit">--:--</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="punches-row" id="punchesRow">
+      <span class="punches-empty">nenhuma batida hoje</span>
+    </div>
+
+    <div class="footer">
+      <span>
+        <span class="status-dot dot-open" id="statusDot"></span>
+        <span class="status-text" id="statusText">carregando...</span>
+      </span>
+      <span class="sync-time" id="syncTime"></span>
+    </div>
+    <div class="flash-msg" id="flashMsg"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    $('closeBtn').addEventListener('click', () => window.ponto.hide());
+    $('settingsBtn').addEventListener('click', () => window.ponto.openSettings());
+
+    async function syncPinState() {
+      const pinned = await window.ponto.getAlwaysOnTop();
+      $('pinBtn').classList.toggle('active', pinned);
+    }
+
+    $('pinBtn').addEventListener('click', async () => {
+      await window.ponto.toggleAlwaysOnTop();
+      await syncPinState();
+    });
+
+    syncPinState();
+
+    function renderPunches(punches) {
+      const row = $('punchesRow');
+      if (!punches || punches.length === 0) {
+        row.innerHTML = '<span class="punches-empty">nenhuma batida hoje</span>';
+        return;
+      }
+      row.innerHTML = punches.map((p) => {
+        const cls = p.type === 'ENTRY' ? 'entry' : 'exit';
+        const icon = p.type === 'ENTRY' ? '↑' : '↓';
+        return `<span class="punch-badge ${cls}">${p.time} ${icon}</span>`;
+      }).join('');
+    }
+
+    function render(data) {
+      if (!data) return;
+
+      $('worked').textContent = data.workedFormatted;
+      $('remaining').textContent = data.isOvertime
+        ? '+' + data.overtimeFormatted
+        : data.remainingFormatted;
+      $('exit').textContent = data.expectedExit;
+      $('syncTime').textContent = data.lastSync;
+      renderPunches(data.punches);
+
+      const rem = $('remaining');
+      rem.className = 'value';
+      if (data.isOvertime) {
+        rem.classList.add('danger');
+      } else if (data.isComplete) {
+        rem.classList.add('accent');
+      }
+
+      const dot = $('statusDot');
+      dot.className = 'status-dot';
+      const text = $('statusText');
+
+      if (data.isOvertime) {
+        dot.classList.add('dot-overtime');
+        text.textContent = 'hora extra';
+      } else if (data.isComplete) {
+        dot.classList.add('dot-done');
+        text.textContent = 'jornada concluída';
+      } else if (data.isOpen) {
+        dot.classList.add('dot-open');
+        text.textContent = 'expediente aberto';
+      } else {
+        dot.classList.add('dot-closed');
+        text.textContent = 'fora do expediente';
+      }
+    }
+
+    window.ponto.getSummary().then(render);
+    window.ponto.onUpdate(render);
+
+    // Teste: abrir DevTools e chamar window.testNotif('new_punch') etc.
+    window.testNotif = (type) => window.ponto.testNotif(type);
+    // tipos disponíveis: new_punch, warning, 5min, complete, overtime, lunch_time, lunch_return, exit_reminder
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playNotifSound() {
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.3);
+      } catch (_) {}
+    }
+
+    let flashTimer = null;
+    window.ponto.onFlash((msg) => {
+      const widget = document.querySelector('.widget');
+      const flashMsg = $('flashMsg');
+      flashMsg.textContent = msg;
+      widget.classList.remove('flash');
+      void widget.offsetWidth;
+      widget.classList.add('flash');
+      playNotifSound();
+      if (flashTimer) clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => {
+        widget.classList.remove('flash');
+        flashMsg.textContent = '';
+      }, 2000);
+    });
+  </script>
+</body>
+</html>

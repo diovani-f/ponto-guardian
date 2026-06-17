@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-electron/
+release/
+config/settings.json
+data/
+*.db
+
+dist-electron/
+release/
