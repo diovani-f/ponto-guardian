@@ -16,13 +16,17 @@ function autostartPath(): string {
   return join(app.getPath('home'), '.config', 'autostart', 'ponto-guardian.desktop');
 }
 
+function desktopExecArg(value: string): string {
+  return `"${value.replace(/["\\`$]/g, '\\$&')}"`;
+}
+
 function setAutostart(enabled: boolean): void {
   const desktopPath = autostartPath();
   if (enabled) {
     // app.isPackaged = true quando rodando via AppImage
     const execLine = app.isPackaged
-      ? `${app.getPath('exe')} --no-sandbox`
-      : `${process.execPath} ${join(__dirname, 'main.js')} --no-sandbox`;
+      ? `${desktopExecArg(process.env.APPIMAGE ?? app.getPath('exe'))} --no-sandbox`
+      : `${desktopExecArg(process.execPath)} ${desktopExecArg(join(__dirname, 'main.js'))} --no-sandbox`;
     const content = [
       '[Desktop Entry]',
       'Type=Application',

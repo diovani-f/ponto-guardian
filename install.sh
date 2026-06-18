@@ -20,16 +20,11 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
   echo "Adicionado ~/.local/bin ao PATH em $SHELL_RC"
 fi
 
-# Se já estiver instalado, apenas abre
 if [ -x "$APP_PATH" ]; then
-  echo "Abrindo Ponto Guardian..."
-  nohup "$APP_PATH" --no-sandbox > /dev/null 2>&1 &
-  disown
-  echo "Para abrir novamente a qualquer momento, rode: ponto"
-  exit 0
+  echo "Atualizando Ponto Guardian..."
+else
+  echo "Instalando Ponto Guardian..."
 fi
-
-echo "Instalando Ponto Guardian..."
 
 for cmd in curl jq; do
   if ! command -v "$cmd" &>/dev/null; then

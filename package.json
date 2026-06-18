@@ -1,6 +1,6 @@
 {
   "name": "ponto-guardian",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Monitor de jornada de trabalho integrado ao Secullum",
   "private": true,
   "main": "dist-electron/electron/main.js",
@@ -17,7 +17,7 @@
     "electron": "npm run build:electron && npx electron dist-electron/electron/main.js --no-sandbox",
     "start:bg": "npm run build:electron && nohup npx electron dist-electron/electron/main.js --no-sandbox > /dev/null 2>&1 &",
     "dist": "npm run build:electron && electron-builder --linux AppImage",
-    "open": "nohup \"./release/Ponto Guardian-0.1.0.AppImage\" --no-sandbox > /dev/null 2>&1 & disown",
+    "open": "nohup \"./release/Ponto Guardian-0.1.1.AppImage\" --no-sandbox > /dev/null 2>&1 & disown",
     "postinstall": "electron-rebuild -f -w better-sqlite3 2>/dev/null || true"
   },
   "build": {
