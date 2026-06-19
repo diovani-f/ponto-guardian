@@ -221,9 +221,21 @@ async function getApproximatePositionByIp(): Promise<ApproximatePosition> {
   throw new Error(`Busca de localização aproximada falhou (${errors.join('; ')})`);
 }
 
+async function getApproximateCapturedPositionByIp(): Promise<CapturedPosition> {
+  const position = await getApproximatePositionByIp();
+  const address = await reverseGeocode(position.latitude, position.longitude);
+  return { ...position, address };
+}
+
 async function capturePositionFromBrowser(): Promise<CapturedPosition> {
   return await new Promise((resolve, reject) => {
     let settled = false;
+    const fail = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      server.close();
+      reject(error);
+    };
     const server = createServer((req, res) => {
       if (req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -249,22 +261,64 @@ async function capturePositionFromBrowser(): Promise<CapturedPosition> {
   </main>
   <script>
     const status = document.getElementById('status');
-    document.getElementById('btn').addEventListener('click', () => {
-      status.textContent = 'solicitando localização...';
-      navigator.geolocation.getCurrentPosition(async (position) => {
-        await fetch('/position', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-          }),
-        });
-        status.textContent = 'localização salva no Ponto Guardian. Pode fechar esta janela.';
-      }, (error) => {
-        status.textContent = error.message || 'não foi possível obter localização';
-      }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+    const attempts = [
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 },
+      { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 },
+    ];
+
+    function errorCodeName(code) {
+      if (code === 1) return 'PERMISSION_DENIED';
+      if (code === 2) return 'POSITION_UNAVAILABLE';
+      if (code === 3) return 'TIMEOUT';
+      return 'UNKNOWN';
+    }
+
+    async function sendError(error) {
+      const message = error?.message || 'não foi possível obter localização';
+      await fetch('/position-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: errorCodeName(error?.code), message }),
+      }).catch(() => {});
+    }
+
+    function requestPosition(options) {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
+    }
+
+    document.getElementById('btn').addEventListener('click', async () => {
+      if (!navigator.geolocation) {
+        const error = new Error('Este navegador não suporta localização.');
+        status.textContent = error.message;
+        await sendError(error);
+        return;
+      }
+
+      let lastError = null;
+      for (const [index, options] of attempts.entries()) {
+        status.textContent = index === 0 ? 'solicitando localização...' : 'tentando novamente com alta precisão...';
+        try {
+          const position = await requestPosition(options);
+          await fetch('/position', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+            }),
+          });
+          status.textContent = 'localização salva no Ponto Guardian. Pode fechar esta janela.';
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      status.textContent = lastError?.message || 'não foi possível obter localização';
+      await sendError(lastError);
     });
   </script>
 </body>
@@ -293,12 +347,24 @@ async function capturePositionFromBrowser(): Promise<CapturedPosition> {
             server.close();
             resolve({ latitude, longitude, accuracy, address });
           } catch (error) {
-            settled = true;
             res.writeHead(400);
             res.end();
-            server.close();
-            reject(error instanceof Error ? error : new Error(String(error)));
+            fail(error instanceof Error ? error : new Error(String(error)));
           }
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/position-error') {
+        const chunks: Buffer[] = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', () => {
+          const data = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as { code?: unknown; message?: unknown };
+          const code = typeof data.code === 'string' ? data.code : 'UNKNOWN';
+          const message = typeof data.message === 'string' && data.message.trim() ? data.message.trim() : 'não foi possível obter localização';
+          res.writeHead(204);
+          res.end();
+          fail(new Error(`Navegador não retornou localização (${code}): ${message}`));
         });
         return;
       }
@@ -308,10 +374,7 @@ async function capturePositionFromBrowser(): Promise<CapturedPosition> {
     });
 
     const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      server.close();
-      reject(new Error('Tempo esgotado aguardando localização do navegador.'));
+      fail(new Error('Tempo esgotado aguardando localização do navegador. Verifique se a localização está ativada no Windows e se o navegador tem permissão.'));
     }, 90000);
 
     server.on('close', () => clearTimeout(timeout));
@@ -325,19 +388,14 @@ async function capturePositionFromBrowser(): Promise<CapturedPosition> {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
       if (!address || typeof address === 'string') {
-        settled = true;
         clearTimeout(timeout);
-        server.close();
-        reject(new Error('Não foi possível abrir o servidor local de localização'));
+        fail(new Error('Não foi possível abrir o servidor local de localização'));
         return;
       }
 
       shell.openExternal(`http://127.0.0.1:${address.port}/`).catch((error) => {
-        if (settled) return;
-        settled = true;
         clearTimeout(timeout);
-        server.close();
-        reject(error);
+        fail(error);
       });
     });
   });
@@ -640,7 +698,7 @@ ipcMain.handle('get-system-position', async () => {
 
 ipcMain.handle('capture-browser-position', () => capturePositionFromBrowser());
 
-ipcMain.handle('get-approximate-position', () => getApproximatePositionByIp());
+ipcMain.handle('get-approximate-position', () => getApproximateCapturedPositionByIp());
 
 ipcMain.handle('clock-in', async (_e, position: { latitude: number; longitude: number; accuracy: number }) => {
   if (!currentSession) {
