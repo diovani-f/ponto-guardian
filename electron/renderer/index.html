@@ -211,6 +211,34 @@
       font-size: 10px;
       color: rgba(255, 255, 255, 0.2);
     }
+
+    .clock-btn {
+      -webkit-app-region: no-drag;
+      width: 100%;
+      margin-bottom: 8px;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 8px;
+      background: rgba(99, 102, 241, 0.18);
+      color: #c7d2fe;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .clock-btn:hover:not(:disabled) {
+      background: rgba(99, 102, 241, 0.28);
+    }
+
+    .clock-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .clock-btn.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -245,6 +273,8 @@
       <span class="punches-empty">nenhuma batida hoje</span>
     </div>
 
+    <button class="clock-btn" id="clockBtn">bater ponto</button>
+
     <div class="footer">
       <span>
         <span class="status-dot dot-open" id="statusDot"></span>
@@ -272,6 +302,67 @@
     });
 
     syncPinState();
+
+    function setFlashMessage(message) {
+      $('flashMsg').textContent = message;
+    }
+
+    function hasSavedLocation(settings) {
+      return settings.useFixedLocation === true &&
+        typeof settings.fixedLatitude === 'number' &&
+        typeof settings.fixedLongitude === 'number' &&
+        typeof settings.fixedAccuracy === 'number' &&
+        Boolean((settings.fixedAddress ?? '').trim());
+    }
+
+    async function syncClockButtonState() {
+      const settings = await window.ponto.getSettings();
+      const enabled = settings.enableWidgetClockIn ?? false;
+      const hasDeviceId = Boolean((settings.identificacaoDispositivo ?? '').trim());
+      const hasLocation = hasSavedLocation(settings);
+      $('clockBtn').classList.toggle('hidden', !enabled);
+      $('clockBtn').disabled = enabled && (!hasDeviceId || !hasLocation);
+      $('clockBtn').title = hasDeviceId && hasLocation
+        ? 'Registra a batida de ponto real'
+        : 'preencha o identificador e busque a localização nas configurações';
+      if (enabled && !hasDeviceId) {
+        setFlashMessage('configure o identificador do dispositivo');
+      } else if (enabled && !hasLocation) {
+        setFlashMessage('busque a localização nas configurações');
+      }
+    }
+
+    async function getCurrentPosition() {
+      const settings = await window.ponto.getSettings();
+      if (!hasSavedLocation(settings)) {
+        throw new Error('Busque e salve a localização nas configurações antes de bater o ponto.');
+      }
+
+      setFlashMessage('usando localização salva');
+      return { latitude: 0, longitude: 0, accuracy: 0 };
+    }
+
+    $('clockBtn').addEventListener('click', async () => {
+      const button = $('clockBtn');
+      button.disabled = true;
+      button.textContent = 'preparando...';
+      setFlashMessage('obtendo localização');
+
+      try {
+        const position = await getCurrentPosition();
+        button.textContent = 'batendo...';
+        await window.ponto.clockIn(position);
+        setFlashMessage('ponto registrado');
+      } catch (error) {
+        setFlashMessage(error.message ?? 'erro ao preparar batida');
+      } finally {
+        button.textContent = 'bater ponto';
+        await syncClockButtonState();
+      }
+    });
+
+    syncClockButtonState();
+    setInterval(syncClockButtonState, 3000);
 
     function renderPunches(punches) {
       const row = $('punchesRow');

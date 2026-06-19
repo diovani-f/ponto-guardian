@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "Erro: este instalador é apenas para Linux."
+  echo "No Windows, use o install.ps1 ou baixe o .exe portable na release."
+  exit 1
+fi
+
 REPO="diovani-f/ponto-guardian"
 INSTALL_DIR="$HOME/.local/bin"
 APP_PATH="$INSTALL_DIR/ponto-guardian.AppImage"

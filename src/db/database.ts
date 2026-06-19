@@ -1,3 +1,4 @@
+import { mkdirSync } from 'fs';
 import Database from 'better-sqlite3';
 import { join } from 'path';
 import { Punch } from '../models/punch.model.js';
@@ -7,7 +8,9 @@ let db: Database.Database;
 export function getDb(): Database.Database {
   if (!db) {
     const root = process.env.PONTO_ROOT ?? process.cwd();
-    const dbPath = join(root, 'data', 'ponto.db');
+    const dataDir = join(root, 'data');
+    mkdirSync(dataDir, { recursive: true });
+    const dbPath = join(dataDir, 'ponto.db');
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     migrate(db);

@@ -16,8 +16,11 @@
     "rebuild:native": "electron-rebuild -f -w better-sqlite3",
     "electron": "npm run build:electron && npx electron dist-electron/electron/main.js --no-sandbox",
     "start:bg": "npm run build:electron && nohup npx electron dist-electron/electron/main.js --no-sandbox > /dev/null 2>&1 &",
-    "dist": "npm run build:electron && electron-builder --linux AppImage",
-    "open": "nohup \"./release/Ponto Guardian-0.1.1.AppImage\" --no-sandbox > /dev/null 2>&1 & disown",
+    "dist": "npm run dist:linux",
+    "dist:linux": "npm run build:electron && electron-builder --linux AppImage",
+    "dist:win": "npm run build:electron && electron-builder --win portable",
+    "dist:all": "npm run build:electron && electron-builder --linux AppImage --win portable",
+    "open:linux": "nohup \"./release/Ponto Guardian-0.1.1.AppImage\" --no-sandbox > /dev/null 2>&1 & disown",
     "postinstall": "electron-rebuild -f -w better-sqlite3 2>/dev/null || true"
   },
   "build": {
@@ -45,6 +48,11 @@
       "target": ["AppImage"],
       "category": "Utility",
       "executableName": "ponto-guardian"
+    },
+    "win": {
+      "target": ["portable"],
+      "icon": "build/icon.png",
+      "artifactName": "Ponto-Guardian-${version}-portable.${ext}"
     },
     "asar": true,
     "asarUnpack": [

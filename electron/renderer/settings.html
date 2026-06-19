@@ -52,6 +52,15 @@
 
     .field:last-child { margin-bottom: 0; }
 
+    .hidden { display: none; }
+
+    .location-summary {
+      color: #c4c4cc;
+      font-size: 13px;
+      max-width: 210px;
+      text-align: right;
+    }
+
     .field-label {
       font-size: 13px;
       color: #c4c4cc;
@@ -82,6 +91,10 @@
     input[type="password"] {
       width: 160px;
       text-align: left;
+    }
+
+    .wide-input {
+      width: 220px !important;
     }
 
     input[type="time"] {
@@ -276,6 +289,52 @@
       </div>
       <input type="number" id="empresaId" />
     </div>
+
+    <div class="field">
+      <div>
+        <div class="field-label">Bater ponto pelo widget</div>
+        <div class="field-hint">mostra botão no widget</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="enableWidgetClockIn" />
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <div class="field" id="deviceIdField">
+      <div>
+        <div class="field-label">Identificador do dispositivo</div>
+        <div class="field-hint">obrigatório para bater pelo widget</div>
+      </div>
+      <input type="text" id="identificacaoDispositivo" class="wide-input" autocomplete="off" />
+    </div>
+  </div>
+
+  <div class="section" id="locationSection">
+    <div class="section-title">Localização para ponto</div>
+
+    <div class="field">
+      <div>
+        <div class="field-label">Buscar localização no navegador</div>
+        <div class="field-hint">abre o navegador e salva a localização</div>
+      </div>
+      <button class="btn-save" id="captureLocationBtn" type="button">Buscar</button>
+    </div>
+
+    <div class="field">
+      <div>
+        <div class="field-label">Localização salva</div>
+        <div class="field-hint">atualize clicando em buscar</div>
+      </div>
+      <div class="location-summary" id="savedLocationSummary">Nenhuma</div>
+    </div>
+
+    <input type="hidden" id="useFixedLocation" />
+    <input type="hidden" id="fixedLatitude" />
+    <input type="hidden" id="fixedLongitude" />
+    <input type="hidden" id="fixedAccuracy" />
+    <input type="hidden" id="fixedAddress" />
   </div>
 
   <div class="actions">
@@ -299,10 +358,19 @@
       document.getElementById('entryTime').value = s.entryTime ?? '';
       document.getElementById('lunchTime').value = s.lunchTime ?? '';
       document.getElementById('autostart').checked = s.autostart ?? false;
+      document.getElementById('enableWidgetClockIn').checked = s.enableWidgetClockIn ?? false;
+      document.getElementById('identificacaoDispositivo').value = s.identificacaoDispositivo ?? '';
+      document.getElementById('useFixedLocation').value = s.useFixedLocation ? 'true' : 'false';
+      document.getElementById('fixedLatitude').value = s.fixedLatitude ?? '';
+      document.getElementById('fixedLongitude').value = s.fixedLongitude ?? '';
+      document.getElementById('fixedAccuracy').value = s.fixedAccuracy ?? '';
+      document.getElementById('fixedAddress').value = s.fixedAddress ?? '';
+      syncWidgetClockInFields();
+      syncSavedLocationSummary();
     }
 
-    document.getElementById('saveBtn').addEventListener('click', async () => {
-      const settings = {
+    function collectSettings() {
+      return {
         dailyHours: parseFloat(document.getElementById('dailyHours').value),
         syncIntervalMinutes: parseInt(document.getElementById('syncIntervalMinutes').value),
         login: document.getElementById('login').value.trim(),
@@ -312,11 +380,57 @@
         entryTime: document.getElementById('entryTime').value || undefined,
         lunchTime: document.getElementById('lunchTime').value || undefined,
         autostart: document.getElementById('autostart').checked,
+        enableWidgetClockIn: document.getElementById('enableWidgetClockIn').checked,
+        identificacaoDispositivo: document.getElementById('identificacaoDispositivo').value.trim(),
+        useFixedLocation: document.getElementById('useFixedLocation').value === 'true',
+        fixedLatitude: document.getElementById('fixedLatitude').value ? parseFloat(document.getElementById('fixedLatitude').value) : null,
+        fixedLongitude: document.getElementById('fixedLongitude').value ? parseFloat(document.getElementById('fixedLongitude').value) : null,
+        fixedAccuracy: document.getElementById('fixedAccuracy').value ? parseFloat(document.getElementById('fixedAccuracy').value) : null,
+        fixedAddress: document.getElementById('fixedAddress').value.trim(),
       };
-      await window.ponto.saveSettings(settings);
+    }
+
+    function syncWidgetClockInFields() {
+      const enabled = document.getElementById('enableWidgetClockIn').checked;
+      document.getElementById('deviceIdField').classList.toggle('hidden', !enabled);
+      document.getElementById('locationSection').classList.toggle('hidden', !enabled);
+    }
+
+    function syncSavedLocationSummary() {
+      const address = document.getElementById('fixedAddress').value;
+      document.getElementById('savedLocationSummary').textContent = address ? address.split(',')[0] : 'Nenhuma';
+    }
+
+    async function saveCurrentSettings() {
+      await window.ponto.saveSettings(collectSettings());
       const toast = document.getElementById('toast');
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', saveCurrentSettings);
+    document.getElementById('enableWidgetClockIn').addEventListener('change', syncWidgetClockInFields);
+
+    document.getElementById('captureLocationBtn').addEventListener('click', async () => {
+      const button = document.getElementById('captureLocationBtn');
+      button.disabled = true;
+      button.textContent = 'Buscando...';
+
+      try {
+        const position = await window.ponto.captureBrowserPosition();
+        document.getElementById('useFixedLocation').value = 'true';
+        document.getElementById('fixedLatitude').value = position.latitude;
+        document.getElementById('fixedLongitude').value = position.longitude;
+        document.getElementById('fixedAccuracy').value = position.accuracy;
+        document.getElementById('fixedAddress').value = position.address;
+        syncSavedLocationSummary();
+        await saveCurrentSettings();
+      } catch (error) {
+        alert(error.message || 'Não foi possível capturar a localização.');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Buscar';
+      }
     });
 
     document.getElementById('cancelBtn').addEventListener('click', () => {

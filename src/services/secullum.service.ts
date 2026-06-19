@@ -37,6 +37,38 @@ interface SecullumBatidasResponse {
   lista: SecullumDia[];
 }
 
+export interface ClockInMetadata {
+  horaServidor: string;
+  exigirCapturaFotoPonto: boolean;
+  reconhecerFace: boolean;
+  somentePerimetrosAutorizados: boolean;
+  qualidadeVidaTrabalho?: {
+    habilitado: boolean;
+  };
+}
+
+export interface ClockInPayload {
+  justificativa: null;
+  latitude: number;
+  longitude: number;
+  precisao: number;
+  endereco: string;
+  foraDoPerimetro: boolean;
+  foto: null;
+  fusoFoiModificado: boolean;
+  horaFoiModificada: boolean;
+  identificacaoDispositivo: string;
+  marcacaoOffline: boolean;
+  utilizaLocalizacaoFicticia: boolean;
+  viaCentralWeb: boolean;
+  atividadeId: null;
+}
+
+export interface ClockInResult {
+  dryRun: boolean;
+  payload: ClockInPayload;
+}
+
 export async function login(config: SecullumConfig): Promise<SecullumSession> {
   const res = await fetch(`${BASE_URL}/${config.empresaId}/Login`, {
     method: 'POST',
@@ -66,6 +98,51 @@ export async function login(config: SecullumConfig): Promise<SecullumSession> {
     nivelPermissao: data.nivelPermissao,
     empresaId: config.empresaId,
   };
+}
+
+export async function getClockInMetadata(session: SecullumSession): Promise<ClockInMetadata> {
+  const res = await fetch(`${BASE_URL}/${session.empresaId}/IncluirPonto`, {
+    headers: {
+      Authorization: session.authHeader,
+      'X-Sec-Centralfuncionarioversao': SEC_VERSION,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Busca de metadados do ponto falhou: HTTP ${res.status}`);
+  }
+
+  return (await res.json()) as ClockInMetadata;
+}
+
+export async function createClockIn(
+  session: SecullumSession,
+  payload: ClockInPayload,
+  options: { dryRun: boolean } = { dryRun: true },
+): Promise<ClockInResult> {
+  if (options.dryRun) {
+    console.log('[clock-in] Dry run ativo. POST real não foi enviado.', payload);
+    return { dryRun: true, payload };
+  }
+
+  const res = await fetch(
+    `${BASE_URL}/${session.empresaId}/IncluirPonto?funcionarioId=${session.funcionarioId}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: session.authHeader,
+        'Content-Type': 'application/json',
+        'X-Sec-Centralfuncionarioversao': SEC_VERSION,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`Batida de ponto falhou: HTTP ${res.status}`);
+  }
+
+  return { dryRun: false, payload };
 }
 
 export async function fetchPunchesForDate(

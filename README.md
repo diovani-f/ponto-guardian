@@ -4,20 +4,31 @@ Widget de monitoramento de jornada integrado ao Secullum Ponto Web.
 
 ## Instalação
 
-Baixa e abre o app com um único comando:
+### Linux
+
+Dependências:
+
+```bash
+sudo apt install curl jq
+```
+
+Instalar ou atualizar:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/diovani-f/ponto-guardian/master/install.sh)
 ```
 
-Na primeira execução o script baixa o .AppImage e abre o app.
-Nas próximas, apenas abre.
+O script baixa o `.AppImage`, salva em `~/.local/bin/ponto-guardian.AppImage` e cria o comando `ponto`.
 
-### Dependências
+### Windows
 
-```bash
-sudo apt install curl jq
+No PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -NoProfile -Command "iwr https://raw.githubusercontent.com/diovani-f/ponto-guardian/master/install.ps1 -UseB | iex"
 ```
+
+O script baixa o `.exe portable`, salva em `%LOCALAPPDATA%\PontoGuardian\Ponto Guardian.exe` e abre o aplicativo.
 
 ## Configuração
 
@@ -28,6 +39,12 @@ Na primeira abertura, clique em ⚙ no widget e preencha:
 - **Carga horária:** suas horas diárias (ex: 6)
 
 O empresaId já vem preenchido como 18914.
+
+## Localização para bater ponto pelo widget
+
+Para bater ponto pelo widget, use `Buscar localização no navegador` nas configurações. Esse fluxo abre o navegador padrão, solicita permissão de localização e salva a localização no app.
+
+A localização do sistema via GeoClue é um fallback apenas para Linux. No Windows, use a captura pelo navegador.
 
 ## Notificações
 
@@ -62,8 +79,11 @@ cp config/settings.example.json config/settings.json
 
 ```bash
 npm run electron    # roda em foreground
-npm run start:bg    # roda em segundo plano
-npm run dist        # gera o .AppImage em release/
+npm run start:bg    # roda em segundo plano no Linux
+npm run dist:linux  # gera o .AppImage em release/
+npm run dist:win    # gera o .exe portable em release/
 ```
 
-Após gerar o .AppImage, faça upload na aba Releases do GitHub.
+Use `npm run dist:win` preferencialmente em uma máquina Windows para garantir binários nativos corretos de `better-sqlite3`.
+
+Após gerar os artefatos, faça upload na aba Releases do GitHub.

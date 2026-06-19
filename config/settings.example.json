@@ -9,5 +9,12 @@
   "entryTime": "08:00",
   "lunchTime": "12:00",
   "alwaysOnTop": true,
-  "autostart": false
+  "autostart": false,
+  "enableWidgetClockIn": false,
+  "identificacaoDispositivo": "",
+  "useFixedLocation": false,
+  "fixedLatitude": null,
+  "fixedLongitude": null,
+  "fixedAccuracy": null,
+  "fixedAddress": ""
 }

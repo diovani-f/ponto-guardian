@@ -13,6 +13,13 @@ export interface Settings {
   lunchTime?: string;
   alwaysOnTop?: boolean;
   autostart?: boolean;
+  enableWidgetClockIn?: boolean;
+  identificacaoDispositivo?: string;
+  useFixedLocation?: boolean;
+  fixedLatitude?: number | null;
+  fixedLongitude?: number | null;
+  fixedAccuracy?: number | null;
+  fixedAddress?: string;
 }
 
 let _settings: Settings | null = null;
@@ -34,6 +41,13 @@ const DEFAULTS: Settings = {
   lunchTime: '',
   alwaysOnTop: true,
   autostart: false,
+  enableWidgetClockIn: false,
+  identificacaoDispositivo: '',
+  useFixedLocation: false,
+  fixedLatitude: null,
+  fixedLongitude: null,
+  fixedAccuracy: null,
+  fixedAddress: '',
 };
 
 export function settingsExist(): boolean {

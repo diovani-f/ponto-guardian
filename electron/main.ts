@@ -1,7 +1,10 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, session as electronSession, shell } from 'electron';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, unlinkSync, existsSync } from 'fs';
-import { login } from '../src/services/secullum.service.js';
+import { createServer } from 'http';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { ClockInPayload, SecullumSession, createClockIn, getClockInMetadata, login } from '../src/services/secullum.service.js';
 import { SyncService } from '../src/services/sync.service.js';
 import { getPunchesForDate } from '../src/db/database.js';
 import { buildSummary, formatMinutes, parseHHMM } from '../src/services/workday.service.js';
@@ -12,7 +15,9 @@ import { Punch } from '../src/models/punch.model.js';
 const userDataPath = app.getPath('userData');
 process.env.PONTO_ROOT = userDataPath;
 
-function autostartPath(): string {
+const execFileAsync = promisify(execFile);
+
+function linuxAutostartPath(): string {
   return join(app.getPath('home'), '.config', 'autostart', 'ponto-guardian.desktop');
 }
 
@@ -20,10 +25,9 @@ function desktopExecArg(value: string): string {
   return `"${value.replace(/["\\`$]/g, '\\$&')}"`;
 }
 
-function setAutostart(enabled: boolean): void {
-  const desktopPath = autostartPath();
+function setLinuxAutostart(enabled: boolean): void {
+  const desktopPath = linuxAutostartPath();
   if (enabled) {
-    // app.isPackaged = true quando rodando via AppImage
     const execLine = app.isPackaged
       ? `${desktopExecArg(process.env.APPIMAGE ?? app.getPath('exe'))} --no-sandbox`
       : `${desktopExecArg(process.execPath)} ${desktopExecArg(join(__dirname, 'main.js'))} --no-sandbox`;
@@ -38,15 +42,39 @@ function setAutostart(enabled: boolean): void {
     ].join('\n') + '\n';
     mkdirSync(join(app.getPath('home'), '.config', 'autostart'), { recursive: true });
     writeFileSync(desktopPath, content, 'utf-8');
-  } else {
-    if (existsSync(desktopPath)) unlinkSync(desktopPath);
+    return;
   }
+
+  if (existsSync(desktopPath)) unlinkSync(desktopPath);
+}
+
+function setWindowsAutostart(enabled: boolean): void {
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    path: app.getPath('exe'),
+    args: [],
+  });
+}
+
+function setAutostart(enabled: boolean): void {
+  if (process.platform === 'win32') {
+    setWindowsAutostart(enabled);
+    return;
+  }
+
+  if (process.platform === 'linux') {
+    setLinuxAutostart(enabled);
+    return;
+  }
+
+  console.warn('[autostart] Plataforma não suportada:', process.platform);
 }
 
 let widget: BrowserWindow | null = null;
 let settingsWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let syncService: SyncService | null = null;
+let currentSession: SecullumSession | null = null;
 
 // Notificações disparadas hoje (reset ao trocar de dia)
 let notifDay = '';
@@ -109,6 +137,342 @@ function pushUpdate(): void {
   if (widget && !widget.isDestroyed()) {
     widget.webContents.send('update', getSummaryPayload());
   }
+}
+
+interface ApproximatePosition {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+}
+
+interface CapturedPosition extends ApproximatePosition {
+  address: string;
+}
+
+interface IpLocationProvider {
+  url: string;
+  parse: (data: unknown) => ApproximatePosition | null;
+}
+
+const BROWSER_HEADERS = {
+  Accept: 'application/json,text/plain,*/*',
+  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+};
+
+function parseNumber(value: unknown): number | null {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function getApproximatePositionByIp(): Promise<ApproximatePosition> {
+  const providers: IpLocationProvider[] = [
+    {
+      url: 'https://ipwho.is/',
+      parse: (data) => {
+        const payload = data as { success?: boolean; latitude?: unknown; longitude?: unknown };
+        if (payload.success === false) return null;
+        const latitude = parseNumber(payload.latitude);
+        const longitude = parseNumber(payload.longitude);
+        return latitude !== null && longitude !== null ? { latitude, longitude, accuracy: 20000 } : null;
+      },
+    },
+    {
+      url: 'https://ipapi.co/json/',
+      parse: (data) => {
+        const payload = data as { latitude?: unknown; longitude?: unknown };
+        const latitude = parseNumber(payload.latitude);
+        const longitude = parseNumber(payload.longitude);
+        return latitude !== null && longitude !== null ? { latitude, longitude, accuracy: 20000 } : null;
+      },
+    },
+    {
+      url: 'http://ip-api.com/json/?fields=status,lat,lon',
+      parse: (data) => {
+        const payload = data as { status?: string; lat?: unknown; lon?: unknown };
+        if (payload.status !== 'success') return null;
+        const latitude = parseNumber(payload.lat);
+        const longitude = parseNumber(payload.lon);
+        return latitude !== null && longitude !== null ? { latitude, longitude, accuracy: 20000 } : null;
+      },
+    },
+  ];
+
+  const errors: string[] = [];
+  for (const provider of providers) {
+    try {
+      const res = await fetch(provider.url, { headers: BROWSER_HEADERS });
+      if (!res.ok) {
+        errors.push(`${provider.url}: HTTP ${res.status}`);
+        continue;
+      }
+
+      const position = provider.parse(await res.json());
+      if (position) return position;
+
+      errors.push(`${provider.url}: resposta sem coordenadas`);
+    } catch (error) {
+      errors.push(`${provider.url}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  throw new Error(`Busca de localização aproximada falhou (${errors.join('; ')})`);
+}
+
+async function capturePositionFromBrowser(): Promise<CapturedPosition> {
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const server = createServer((req, res) => {
+      if (req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(`<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Ponto Guardian</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #111827; color: #f9fafb; display: grid; min-height: 100vh; place-items: center; margin: 0; }
+    main { max-width: 430px; padding: 28px; border-radius: 16px; background: #1f2937; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+    button { border: 0; border-radius: 10px; padding: 12px 18px; background: #6366f1; color: white; font-weight: 700; cursor: pointer; }
+    p { color: #cbd5e1; line-height: 1.5; }
+    #status { margin-top: 16px; color: #a5b4fc; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Ponto Guardian</h1>
+    <p>Clique para autorizar a localização no navegador. Depois disso ela ficará salva no aplicativo.</p>
+    <button id="btn">capturar localização</button>
+    <div id="status"></div>
+  </main>
+  <script>
+    const status = document.getElementById('status');
+    document.getElementById('btn').addEventListener('click', () => {
+      status.textContent = 'solicitando localização...';
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        await fetch('/position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          }),
+        });
+        status.textContent = 'localização salva no Ponto Guardian. Pode fechar esta janela.';
+      }, (error) => {
+        status.textContent = error.message || 'não foi possível obter localização';
+      }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+    });
+  </script>
+</body>
+</html>`);
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/position') {
+        const chunks: Buffer[] = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', async () => {
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as { latitude?: unknown; longitude?: unknown; accuracy?: unknown };
+            const latitude = parseNumber(data.latitude);
+            const longitude = parseNumber(data.longitude);
+            const accuracy = parseNumber(data.accuracy) ?? 100;
+
+            if (latitude === null || longitude === null) {
+              throw new Error('Navegador não retornou coordenadas válidas');
+            }
+
+            const address = await reverseGeocode(latitude, longitude);
+            settled = true;
+            res.writeHead(204);
+            res.end();
+            server.close();
+            resolve({ latitude, longitude, accuracy, address });
+          } catch (error) {
+            settled = true;
+            res.writeHead(400);
+            res.end();
+            server.close();
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      server.close();
+      reject(new Error('Tempo esgotado aguardando localização do navegador.'));
+    }, 90000);
+
+    server.on('close', () => clearTimeout(timeout));
+    server.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        settled = true;
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error('Não foi possível abrir o servidor local de localização'));
+        return;
+      }
+
+      shell.openExternal(`http://127.0.0.1:${address.port}/`).catch((error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        server.close();
+        reject(error);
+      });
+    });
+  });
+}
+
+async function getSystemPositionByGeoClue(): Promise<ApproximatePosition> {
+  if (process.platform !== 'linux') {
+    throw new Error('Localização do sistema via GeoClue só está disponível no Linux.');
+  }
+
+  await execFileAsync('gsettings', ['set', 'org.gnome.system.location', 'enabled', 'true']);
+
+  const script = `
+import dbus, json, time
+bus = dbus.SystemBus()
+manager = bus.get_object('org.freedesktop.GeoClue2', '/org/freedesktop/GeoClue2/Manager')
+manager_iface = dbus.Interface(manager, 'org.freedesktop.GeoClue2.Manager')
+client_path = manager_iface.CreateClient()
+client = bus.get_object('org.freedesktop.GeoClue2', client_path)
+props = dbus.Interface(client, 'org.freedesktop.DBus.Properties')
+props.Set('org.freedesktop.GeoClue2.Client', 'DesktopId', 'ponto-guardian')
+props.Set('org.freedesktop.GeoClue2.Client', 'RequestedAccuracyLevel', dbus.UInt32(8))
+dbus.Interface(client, 'org.freedesktop.GeoClue2.Client').Start()
+for _ in range(5):
+    loc_path = props.Get('org.freedesktop.GeoClue2.Client', 'Location')
+    if str(loc_path) != '/':
+        loc = bus.get_object('org.freedesktop.GeoClue2', loc_path)
+        loc_props = dbus.Interface(loc, 'org.freedesktop.DBus.Properties').GetAll('org.freedesktop.GeoClue2.Location')
+        print(json.dumps({
+            'latitude': float(loc_props['Latitude']),
+            'longitude': float(loc_props['Longitude']),
+            'accuracy': float(loc_props['Accuracy']),
+        }))
+        break
+    time.sleep(1)
+else:
+    raise RuntimeError('GeoClue não retornou localização em 5 segundos')
+`;
+
+  const { stdout } = await execFileAsync('python3', ['-c', script], { timeout: 7000 });
+  const data = JSON.parse(stdout.trim()) as { latitude?: unknown; longitude?: unknown; accuracy?: unknown };
+  const latitude = parseNumber(data.latitude);
+  const longitude = parseNumber(data.longitude);
+  const accuracy = parseNumber(data.accuracy) ?? 100;
+
+  if (latitude === null || longitude === null) {
+    throw new Error('GeoClue não retornou coordenadas válidas');
+  }
+
+  return { latitude, longitude, accuracy };
+}
+
+async function reverseGeocode(latitude: number, longitude: number): Promise<string> {
+  const res = await fetch(`https://geolocalizacao.secullum.com.br/Reverse?latitude=${latitude}&longitude=${longitude}`);
+
+  if (!res.ok) {
+    throw new Error(`Busca de endereço falhou: HTTP ${res.status}`);
+  }
+
+  const data = (await res.json()) as { endereco?: string };
+  if (!data.endereco) {
+    throw new Error('Busca de endereço não retornou endereço');
+  }
+
+  return data.endereco;
+}
+
+function hasSavedLocation(settings: ReturnType<typeof getSettings>): boolean {
+  return settings.useFixedLocation === true &&
+    typeof settings.fixedLatitude === 'number' &&
+    typeof settings.fixedLongitude === 'number' &&
+    typeof settings.fixedAccuracy === 'number' &&
+    Boolean(settings.fixedAddress?.trim());
+}
+
+function assertClockInAllowed(): string {
+  const settings = getSettings();
+  if (!settings.enableWidgetClockIn) {
+    throw new Error('Habilite a batida de ponto pelo widget nas configurações.');
+  }
+
+  const identificacaoDispositivo = settings.identificacaoDispositivo?.trim();
+  if (!identificacaoDispositivo) {
+    throw new Error('Configure o identificador do dispositivo antes de bater o ponto.');
+  }
+
+  if (!hasSavedLocation(settings)) {
+    throw new Error('Busque e salve a localização nas configurações antes de bater o ponto.');
+  }
+
+  return identificacaoDispositivo;
+}
+
+function assertSupportedClockIn(metadata: Awaited<ReturnType<typeof getClockInMetadata>>): void {
+  if (metadata.exigirCapturaFotoPonto || metadata.reconhecerFace) {
+    throw new Error('O Secullum exige foto ou reconhecimento facial para esta batida.');
+  }
+
+  if (metadata.somentePerimetrosAutorizados) {
+    throw new Error('O Secullum exige validação de perímetro para esta batida.');
+  }
+
+  if (metadata.qualidadeVidaTrabalho?.habilitado) {
+    throw new Error('O Secullum exige resposta de qualidade de vida para esta batida.');
+  }
+}
+
+async function buildClockInPayload(position: { latitude: number; longitude: number; accuracy: number }): Promise<ClockInPayload> {
+  const identificacaoDispositivo = assertClockInAllowed();
+  const settings = getSettings();
+  const latitude = settings.fixedLatitude;
+  const longitude = settings.fixedLongitude;
+  const precisao = settings.fixedAccuracy;
+  const endereco = settings.fixedAddress?.trim();
+
+  if (typeof latitude !== 'number' || typeof longitude !== 'number' || typeof precisao !== 'number' || !endereco) {
+    throw new Error('Busque e salve a localização nas configurações antes de bater o ponto.');
+  }
+
+  return {
+    justificativa: null,
+    latitude,
+    longitude,
+    precisao,
+    endereco,
+    foraDoPerimetro: false,
+    foto: null,
+    fusoFoiModificado: false,
+    horaFoiModificada: false,
+    identificacaoDispositivo,
+    marcacaoOffline: false,
+    utilizaLocalizacaoFicticia: false,
+    viaCentralWeb: true,
+    atividadeId: null,
+  };
 }
 
 function checkNotifications(newPunches: Punch[]): void {
@@ -180,7 +544,7 @@ function createWidget(): void {
   const alwaysOnTop = getSettings().alwaysOnTop ?? true;
   widget = new BrowserWindow({
     width: 260,
-    height: 185,
+    height: 220,
     frame: false,
     transparent: true,
     alwaysOnTop,
@@ -204,8 +568,8 @@ function openSettingsWindow(): void {
     return;
   }
   settingsWin = new BrowserWindow({
-    width: 420,
-    height: 520,
+    width: 460,
+    height: 760,
     resizable: false,
     title: 'Configurações - Ponto Guardian',
     icon: appIcon(),
@@ -264,6 +628,35 @@ ipcMain.handle('get-summary', () => getSummaryPayload());
 
 ipcMain.handle('get-settings', () => getSettings());
 
+ipcMain.handle('get-system-position', async () => {
+  try {
+    return await getSystemPositionByGeoClue();
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split('\n').at(-2) ?? error.message : String(error);
+    console.warn('[location] Localização do sistema indisponível:', message.trim());
+    return null;
+  }
+});
+
+ipcMain.handle('capture-browser-position', () => capturePositionFromBrowser());
+
+ipcMain.handle('get-approximate-position', () => getApproximatePositionByIp());
+
+ipcMain.handle('clock-in', async (_e, position: { latitude: number; longitude: number; accuracy: number }) => {
+  if (!currentSession) {
+    throw new Error('Sessão Secullum não está ativa.');
+  }
+
+  assertClockInAllowed();
+  const metadata = await getClockInMetadata(currentSession);
+  assertSupportedClockIn(metadata);
+  const payload = await buildClockInPayload(position);
+  const result = await createClockIn(currentSession, payload, { dryRun: false });
+  pushUpdate();
+
+  return result;
+});
+
 ipcMain.handle('set-autostart', (_e, enabled: boolean) => {
   setAutostart(enabled);
 });
@@ -278,6 +671,7 @@ ipcMain.handle('save-settings', (_e, next) => {
     usuario: next.login,
     senha: next.senha,
   }).then((session) => {
+    currentSession = session;
     syncService = new SyncService(session, next.syncIntervalMinutes);
     syncService.onNewPunch(checkNotifications);
     syncService.syncNow().then(pushUpdate);
@@ -323,6 +717,21 @@ ipcMain.handle('get-always-on-top', () => {
 });
 
 app.whenReady().then(async () => {
+  electronSession.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowed = permission === 'geolocation' && webContents.getURL().startsWith('file://');
+    console.log('[location] Pedido de permissão:', permission, webContents.getURL(), allowed ? 'permitido' : 'negado');
+    callback(allowed);
+  });
+
+  electronSession.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    const url = webContents?.getURL() ?? '';
+    const allowed = permission === 'geolocation' && url.startsWith('file://');
+    if (permission === 'geolocation') {
+      console.log('[location] Verificação de permissão:', url, allowed ? 'permitido' : 'negado');
+    }
+    return allowed;
+  });
+
   mkdirSync(join(userDataPath, 'data'), { recursive: true });
   mkdirSync(join(userDataPath, 'config'), { recursive: true });
   const isFirstRun = !settingsExist() || !getSettings().login;
@@ -341,6 +750,7 @@ app.whenReady().then(async () => {
     usuario: settings.login,
     senha: settings.senha,
   });
+  currentSession = session;
 
   syncService = new SyncService(session, settings.syncIntervalMinutes);
   syncService.onNewPunch(checkNotifications);
