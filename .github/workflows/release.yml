@@ -19,13 +19,13 @@ jobs:
         include:
           - platform: linux
             os: ubuntu-latest
-            command: npm run dist:linux
+            command: npm run dist:linux -- --publish never
             artifacts: |
               release/*.AppImage
               release/latest-linux.yml
           - platform: windows
             os: windows-latest
-            command: npm run dist:win
+            command: npm run dist:win -- --publish never
             artifacts: |
               release/*portable.exe
 
