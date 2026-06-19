@@ -379,7 +379,7 @@ async function capturePositionFromBrowser(): Promise<CapturedPosition> {
       reject(error);
     });
 
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, () => {
       const address = server.address();
       if (!address || typeof address === 'string') {
         clearTimeout(timeout);
