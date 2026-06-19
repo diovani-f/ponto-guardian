@@ -4,6 +4,8 @@ Widget de monitoramento de jornada integrado ao Secullum Ponto Web.
 
 ## Instalação
 
+Quem só vai usar o app não precisa instalar Git, Node.js ou clonar o projeto. Use os comandos abaixo depois que houver uma release publicada no GitHub.
+
 ### Linux
 
 Dependências:
@@ -86,4 +88,18 @@ npm run dist:win    # gera o .exe portable em release/
 
 Use `npm run dist:win` preferencialmente em uma máquina Windows para garantir binários nativos corretos de `better-sqlite3`.
 
-Após gerar os artefatos, faça upload na aba Releases do GitHub.
+### Publicar release
+
+O projeto gera os artefatos automaticamente no GitHub Actions quando uma tag `v*` é enviada.
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+Depois que a action terminar, a release terá:
+
+- **Linux:** `.AppImage`
+- **Windows:** `.exe portable`
+
+Colegas podem instalar usando apenas os comandos da seção `Instalação`, sem Git e sem Node.js.
