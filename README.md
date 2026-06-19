@@ -97,7 +97,7 @@ Como pegar o identificador:
 4. Abra `Local storage`.
 5. Copie o valor inteiro da chave `identificacaoNavegador`.
 6. Cole esse valor no campo `Identificador do dispositivo` do Ponto Guardian.
-<img width="6122" height="1900" alt="image" src="https://github.com/user-attachments/assets/b1652bb1-12f0-47ea-9cc7-14ee8084147d" />
+<img width="6122" height="1276" alt="image" src="https://github.com/user-attachments/assets/bda1c467-42f5-4d0a-a39d-96c65e263414" />
 <img width="1690" height="570" alt="image" src="https://github.com/user-attachments/assets/c63b296e-dad9-436f-9e1d-c2d15e9927ff" />
 
 ### Localização
