@@ -6,8 +6,6 @@ O app monitora a jornada, mostra notificações e pode bater ponto pelo widget u
 
 ## Instalação rápida
 
-Quem só vai usar o app não precisa instalar Git, Node.js ou clonar o projeto.
-
 <details>
 <summary><strong>Linux</strong></summary>
 
