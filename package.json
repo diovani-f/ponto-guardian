@@ -21,7 +21,7 @@
     "dist:win": "npm run build:electron && electron-builder --win portable",
     "dist:all": "npm run build:electron && electron-builder --linux AppImage --win portable",
     "open:linux": "nohup \"./release/Ponto Guardian-0.1.1.AppImage\" --no-sandbox > /dev/null 2>&1 & disown",
-    "postinstall": "electron-rebuild -f -w better-sqlite3 2>/dev/null || true"
+    "postinstall": "node scripts/rebuild-native.mjs"
   },
   "build": {
     "appId": "com.ponto-guardian.app",
@@ -52,7 +52,8 @@
     "win": {
       "target": ["portable"],
       "icon": "build/icon.png",
-      "artifactName": "Ponto-Guardian-${version}-portable.${ext}"
+      "artifactName": "Ponto-Guardian-${version}-portable.${ext}",
+      "signAndEditExecutable": false
     },
     "asar": true,
     "asarUnpack": [
