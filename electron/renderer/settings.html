@@ -324,14 +324,6 @@
 
     <div class="field">
       <div>
-        <div class="field-label">Usar localização aproximada</div>
-        <div class="field-hint">fallback por IP, menos preciso</div>
-      </div>
-      <button class="btn-cancel" id="approximateLocationBtn" type="button">Usar IP</button>
-    </div>
-
-    <div class="field">
-      <div>
         <div class="field-label">Localização salva</div>
         <div class="field-hint">atualize clicando em buscar</div>
       </div>
@@ -438,28 +430,10 @@
         fillLocation(position);
         await saveCurrentSettings();
       } catch (error) {
-        alert((error.message || 'Não foi possível capturar a localização.') + '\n\nSe estiver no Windows, confira se a localização está ativada nas configurações do sistema e se o navegador tem permissão. Se continuar falhando, use a localização aproximada por IP.');
+        alert((error.message || 'Não foi possível capturar a localização.') + '\n\nSe estiver no Windows, confira se a localização está ativada nas configurações do sistema e se o navegador tem permissão para http://localhost.');
       } finally {
         button.disabled = false;
         button.textContent = 'Buscar';
-      }
-    });
-
-    document.getElementById('approximateLocationBtn').addEventListener('click', async () => {
-      const button = document.getElementById('approximateLocationBtn');
-      button.disabled = true;
-      button.textContent = 'Buscando...';
-
-      try {
-        const position = await window.ponto.getApproximatePosition();
-        fillLocation(position);
-        await saveCurrentSettings();
-        alert('Localização aproximada salva. Ela é menos precisa que a localização do navegador.');
-      } catch (error) {
-        alert(error.message || 'Não foi possível obter localização aproximada.');
-      } finally {
-        button.disabled = false;
-        button.textContent = 'Usar IP';
       }
     });
 

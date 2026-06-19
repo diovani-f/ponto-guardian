@@ -221,12 +221,6 @@ async function getApproximatePositionByIp(): Promise<ApproximatePosition> {
   throw new Error(`Busca de localização aproximada falhou (${errors.join('; ')})`);
 }
 
-async function getApproximateCapturedPositionByIp(): Promise<CapturedPosition> {
-  const position = await getApproximatePositionByIp();
-  const address = await reverseGeocode(position.latitude, position.longitude);
-  return { ...position, address };
-}
-
 async function capturePositionFromBrowser(): Promise<CapturedPosition> {
   return await new Promise((resolve, reject) => {
     let settled = false;
@@ -374,7 +368,7 @@ async function capturePositionFromBrowser(): Promise<CapturedPosition> {
     });
 
     const timeout = setTimeout(() => {
-      fail(new Error('Tempo esgotado aguardando localização do navegador. Verifique se a localização está ativada no Windows e se o navegador tem permissão.'));
+      fail(new Error('Tempo esgotado aguardando localização do navegador. Verifique se a localização está ativada no Windows e se o navegador tem permissão para http://localhost.'));
     }, 90000);
 
     server.on('close', () => clearTimeout(timeout));
@@ -393,7 +387,7 @@ async function capturePositionFromBrowser(): Promise<CapturedPosition> {
         return;
       }
 
-      shell.openExternal(`http://127.0.0.1:${address.port}/`).catch((error) => {
+      shell.openExternal(`http://localhost:${address.port}/`).catch((error) => {
         clearTimeout(timeout);
         fail(error);
       });
@@ -698,7 +692,7 @@ ipcMain.handle('get-system-position', async () => {
 
 ipcMain.handle('capture-browser-position', () => capturePositionFromBrowser());
 
-ipcMain.handle('get-approximate-position', () => getApproximateCapturedPositionByIp());
+ipcMain.handle('get-approximate-position', () => getApproximatePositionByIp());
 
 ipcMain.handle('clock-in', async (_e, position: { latitude: number; longitude: number; accuracy: number }) => {
   if (!currentSession) {
