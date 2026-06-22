@@ -4,7 +4,7 @@ Aplicativo do ponto integrado ao Secullum Ponto Web.
 
 O app monitora a jornada, mostra notificações e pode bater ponto pelo widget usando o identificador do dispositivo e a localização salva no navegador.
 
-## Instalação rápida
+## Instalação/Atualização rápida
 
 <details>
 <summary><strong>Linux</strong></summary>
