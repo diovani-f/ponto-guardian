@@ -859,7 +859,7 @@ app.whenReady().then(async () => {
     // Renotificação de saída a cada 15 min após jornada concluída
     if (allPunches.length >= 3) {
       const summary = buildSummary(date, allPunches, getDailyMinutes());
-      if (summary.remainingMinutes <= 0) {
+      if (summary.remainingMinutes <= 0 && summary.isOpen) {
         const overtime = Math.abs(summary.remainingMinutes);
         const slot = Math.floor(overtime / 15);
         const key = `exit_reminder_${slot}`;
