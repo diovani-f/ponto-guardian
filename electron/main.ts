@@ -49,10 +49,11 @@ function setLinuxAutostart(enabled: boolean): void {
 }
 
 function setWindowsAutostart(enabled: boolean): void {
+  const exePath = process.env.PORTABLE_EXECUTABLE_FILE || app.getPath('exe');
   app.setLoginItemSettings({
     openAtLogin: enabled,
-    path: app.getPath('exe'),
-    args: [],
+    path: exePath,
+    args: app.isPackaged ? [] : [join(__dirname, 'main.js')],
   });
 }
 
@@ -79,7 +80,6 @@ let currentSession: SecullumSession | null = null;
 // Notificações disparadas hoje (reset ao trocar de dia)
 let notifDay = '';
 const notifiedThresholds = new Set<string>();
-let lunchReturnTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getTodayKey(): string {
   return new Date().toISOString().split('T')[0];
@@ -90,10 +90,6 @@ function resetNotifIfNewDay(): void {
   if (today !== notifDay) {
     notifDay = today;
     notifiedThresholds.clear();
-    if (lunchReturnTimer) {
-      clearTimeout(lunchReturnTimer);
-      lunchReturnTimer = null;
-    }
   }
 }
 
@@ -541,49 +537,6 @@ function checkNotifications(newPunches: Punch[]): void {
     sendNotification('Ponto Guardian', `Nova batida: ${label}`);
   }
 
-  if (remaining <= 0) {
-    if (!notifiedThresholds.has('complete')) {
-      notifiedThresholds.add('complete');
-      sendNotification(
-        'Jornada concluída!',
-        `Você completou suas ${settings.dailyHours}h. Lembre-se de bater a saída.`,
-      );
-    }
-    if (settings.allowOvertime) {
-      const overtime = Math.abs(remaining);
-      const key = `overtime_${Math.floor(overtime / 5) * 5}`;
-      if (!notifiedThresholds.has(key)) {
-        notifiedThresholds.add(key);
-        sendNotification(
-          'Hora extra',
-          `Você está em hora extra há ${formatMinutes(overtime)}.`,
-        );
-      }
-    }
-  }
-
-  // Notificação de volta do almoço: 60 min após o horário real da 2ª batida
-  if (
-    newPunches.length > 0 &&
-    allPunches.length === 2 &&
-    !notifiedThresholds.has('lunch_return_scheduled')
-  ) {
-    notifiedThresholds.add('lunch_return_scheduled');
-    if (lunchReturnTimer) clearTimeout(lunchReturnTimer);
-    // Usa o horário real da 2ª batida para calcular o delay
-    const secondPunch = [...allPunches].sort((a, b) => a.time.localeCompare(b.time))[1];
-    const punchMin = parseHHMM(secondPunch.time);
-    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-    const elapsedMs = punchMin !== null ? Math.max(0, nowMin - punchMin) * 60 * 1000 : 0;
-    const delayMs = Math.max(0, 60 * 60 * 1000 - elapsedMs);
-    lunchReturnTimer = setTimeout(() => {
-      sendNotification(
-        'Hora de voltar!',
-        'Já passou 1 hora de almoço. Não esqueça de bater o ponto.',
-      );
-    }, delayMs);
-  }
-
   pushUpdate();
 }
 
@@ -792,6 +745,8 @@ app.whenReady().then(async () => {
   createWidget();
   createTray();
 
+  setAutostart(settings.autostart ?? false);
+
   if (isFirstRun) {
     openSettingsWindow();
     return;
@@ -842,6 +797,25 @@ app.whenReady().then(async () => {
             `Faltam ${formatMinutes(remaining)} para completar sua jornada.`,
           );
         }
+      } else {
+        if (!notifiedThresholds.has('complete')) {
+          notifiedThresholds.add('complete');
+          sendNotification(
+            'Jornada concluída!',
+            `Você completou suas ${settings.dailyHours}h. Lembre-se de bater a saída.`,
+          );
+        }
+        if (settings.allowOvertime) {
+          const overtime = Math.abs(remaining);
+          const key = `overtime_${Math.floor(overtime / 5) * 5}`;
+          if (!notifiedThresholds.has(key)) {
+            notifiedThresholds.add(key);
+            sendNotification(
+              'Hora extra',
+              `Você está em hora extra há ${formatMinutes(overtime)}.`,
+            );
+          }
+        }
       }
     }
 
@@ -864,6 +838,21 @@ app.whenReady().then(async () => {
           'Hora do almoço!',
           'Lembre-se de bater o ponto antes de sair para o almoço.',
         );
+      }
+    }
+
+    // Notificação de volta do almoço (60 min após a 2ª batida) se ainda não bateu a volta
+    if (allPunches.length === 2) {
+      const secondPunch = [...allPunches].sort((a, b) => a.time.localeCompare(b.time))[1];
+      const punchMin = parseHHMM(secondPunch.time);
+      if (punchMin !== null && nowMin - punchMin >= 60) {
+        if (!notifiedThresholds.has('lunch_return')) {
+          notifiedThresholds.add('lunch_return');
+          sendNotification(
+            'Hora de voltar!',
+            'Já passou 1 hora de almoço. Não esqueça de bater o ponto.',
+          );
+        }
       }
     }
 
